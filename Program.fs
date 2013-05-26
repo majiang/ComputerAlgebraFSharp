@@ -101,6 +101,23 @@ type Expression =
                 (this, false)
         | _ -> (this, false)
 
+
+let rec flattenProduct = function
+    | Sumation xs -> xs |> (Array.map flattenProduct) |> Sumation
+    | Product xs -> xs |> ((flattenProduct >> function
+        | Product ys -> ys
+        | y -> [|y|]
+        ) |> Array.map) |> Array.concat  |> Product
+    | x -> x
+
+let rec flattenSumation = function
+    | Product xs -> xs |> (Array.map flattenSumation) |> Product
+    | Sumation xs -> xs |> ((flattenSumation >> function
+        | Sumation ys -> ys
+        | y -> [|y|]
+        ) |> Array.map) |> Array.concat |> Sumation
+    | x -> x
+
 let Poly = function Sum xs -> Sumation(Array.map Mono xs)
 
 let f =
@@ -112,18 +129,24 @@ let g =
     Sum [|
         Prod[|Var "x"|];
         Prod[|Val 3|]|]
-let printExpression name expression =
+let printexpression name expression =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
+let rec printExpression name (expression : Expression) =
+    System.Console.WriteLine("{0} = {1}", name, expression.ToString())
+    let x = expression.expand () in
+        if snd x then
+            printExpression name (fst x)
+        else
+            printExpression name (flattenSumation (fst x))
 
 let main =
-    printExpression "1" (Val 1)
-    printExpression "f" f
-    printExpression "g" g
-    printExpression "f+g" (f + g)
-    printExpression "f*g" (f * g)
-    printExpression "" (Product [|Poly f; Poly g|])
-    printExpression "" (fst ((Product [|Poly f; Poly g|]).expand ()))
-    printExpression "" (fst ((fst ((Product [|Poly f; Poly g|]).expand ())).expand ()))
+    printexpression "1" (Val 1)
+    printexpression "f" f
+    printexpression "g" g
+    printexpression "f+g" (f + g)
+    printexpression "f*g" (f * g)
+    //printExpression "f*g" (Product [|Poly f; Poly g|])
+    printExpression "g*g*g" (Product [|Poly g; Poly g; Poly g|])
 
 main
 
