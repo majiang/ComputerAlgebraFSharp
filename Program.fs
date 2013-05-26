@@ -1,4 +1,5 @@
 ﻿let uncurry = fun f -> fun x -> fun y -> f (x, y)
+let first = fun f -> fun (x, y) -> (f x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
 let flip = fun f -> fun x -> fun y -> f y x
 
@@ -18,13 +19,13 @@ let mjoin s =
     >> fun (xs : string[]) -> System.String.Join(s, xs)
 
 type Monomial =
-    | Product of Element[]
+    | Prod of Element[]
     static member (*) (x, y) =
         match (x, y) with
-        | (Product e, Product f) -> Product((e |> Array.append) f)
+        | (Prod e, Prod f) -> Prod((e |> Array.append) f)
     override this.ToString() =
         match this with
-        | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
+        | Prod xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
 
 type Polynomial =
     | Sum of Monomial[]
@@ -44,16 +45,73 @@ type Polynomial =
         match (x, y) with
         | (Sum xs, _) -> Sum(xs |> ((flip (*) y >> (fun p -> match p with Sum ms -> ms)) |> Array.map) |> Array.concat)
 
+type Expression =
+    | Elem of Element
+    | Mono of Monomial
+//    | Poly of Polynomial
+    | Product of Expression[]
+    | Sumation of Expression[]
+    static member (+) (x, y) = Sumation [|x; y|]
+    static member (*) (x, y) = Product [|x; y|]
+    override this.ToString() =
+        match this with
+        | Elem x -> x.ToString()
+        | Mono x -> x.ToString()
+//        | Poly x -> "(" + x.ToString() + ")"
+        | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
+        | Sumation xs -> if xs.Length = 0 then "0" else (if xs.Length = 1 then "" else "(") + (xs |> mjoin "+") + (if xs.Length = 1 then "" else ")")
+    member this.parenthesize start count =
+        match this with
+        | Product xs -> Product (((
+                                        xs.[..(start - 1)] |> Array.append)
+                                        [|Product xs.[start..(start + count - 1)]|] |> Array.append)
+                                        xs.[(start + count)..])
+        | Sumation xs -> Sumation (((
+                                        xs.[..(start - 1)] |> Array.append)
+                                        [|Sumation xs.[start..(start + count - 1)]|] |> Array.append)
+                                        xs.[(start + count)..])
+        | _ -> this
+    // (a+b+...)(c+d+...) -> a(c+d+...) + b(c+d+...) + ...
+    member this.expand () =
+        match this with
+        | Product xs ->
+            let x = Array.map (fun (x : Expression) -> x.expand ()) xs in
+            if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
+                (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
+            elif x.Length <= 1 then
+                (this, false)
+            else // no low-level expand done.
+                match xs.[0] with
+                | Sumation ys ->
+                    (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) ys), true)
+                | _ ->
+                let pr = (Product xs.[1..]).expand() in
+                    if snd pr then
+                        (Product(Array.append [|xs.[0]|] [|(fst pr)|]), true)
+                    else
+                        match xs.[1] with
+                        | Sumation ys ->
+                            (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
+                        | _ -> (this, false)
+        | Sumation xs ->
+            let x = Array.map (fun (x : Expression) -> x.expand ()) xs in
+            if Array.fold (fun s -> fun p -> s || snd p) false x then
+                (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
+            else
+                (this, false)
+        | _ -> (this, false)
+
+let Poly = function Sum xs -> Sumation(Array.map Mono xs)
 
 let f =
     Sum [|
-        Product[|Var "x"; Var "x"|];
-        Product[|Val 2; Var "x"|];
-        Product[|Val 1|]|]
+        Prod[|Var "x"; Var "x"|];
+        Prod[|Val 2; Var "x"|];
+        Prod[|Val 1|]|]
 let g =
     Sum [|
-        Product[|Var "x"|];
-        Product[|Val 3|]|]
+        Prod[|Var "x"|];
+        Prod[|Val 3|]|]
 let printExpression name expression =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
 
@@ -63,6 +121,9 @@ let main =
     printExpression "g" g
     printExpression "f+g" (f + g)
     printExpression "f*g" (f * g)
+    printExpression "" (Product [|Poly f; Poly g|])
+    printExpression "" (fst ((Product [|Poly f; Poly g|]).expand ()))
+    printExpression "" (fst ((fst ((Product [|Poly f; Poly g|]).expand ())).expand ()))
 
 main
 
