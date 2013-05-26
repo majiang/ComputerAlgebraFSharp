@@ -3,7 +3,8 @@ let first = fun f -> fun (x, y) -> (f x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
 let flip = fun f -> fun x -> fun y -> f y x
 let ( *** ) f g = fun (x, y) -> (f x, g y)
-let (++) = Array.append
+let ( <|> ) x f = x |> flip Array.map <| f
+let (++) = Array.append // (a ++ b) == (a |> Array.append <| b)
 
 open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
@@ -36,11 +37,11 @@ type Polynomial =
     override x.ToString() : string =
         x.unSum |> fun xs -> if xs.Length = 0 then "0" else xs |> mjoin "+"
     static member (*) ((x : Polynomial), (y : Monomial)) =
-        x.unSum |> (flip (*) y |> Array.map) |> Sum
+        x.unSum <|> flip (*) y |> Sum
     static member (*) ((x : Monomial), (y : Polynomial)) =
-        y.unSum |> ((*) x |> Array.map) |> Sum
+        y.unSum <|> (*) x |> Sum
     static member (*) (x : Polynomial, y : Polynomial) =
-        x.unSum |> ((flip (*) y >> (fun (p : Polynomial) -> p.unSum)) |> Array.map) |> Array.concat |> Sum
+        x.unSum <|> (flip (*) y >> (fun (p : Polynomial) -> p.unSum)) |> Array.concat |> Sum
 
 let ifsp<'T> = fun (xs : 'T[]) -> fun p -> if xs.Length = 1 then "" else p
 type Expression =
@@ -78,7 +79,7 @@ let rec parenthesizedeeper = function
 
 let rec expand = function
     | Product xs ->
-        let x = Array.map expand xs in
+        let x = xs <|> expand in
         if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
             (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
         elif x.Length <= 1 then
@@ -86,7 +87,7 @@ let rec expand = function
         else // no low-level expand done.
             match xs.[0] with
             | Sumation ys ->
-                (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) ys), true)
+                (ys <|> (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) |> Sumation, true)
             | _ ->
             let pr = expand (Product xs.[1..]) in
                 if snd pr then
@@ -97,7 +98,7 @@ let rec expand = function
                         (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
                     | _ -> (Product xs, false)
     | Sumation xs ->
-        let x = Array.map expand xs in
+        let x = xs <|> expand in
         if Array.fold (fun s -> fun p -> s || snd p) false x then
             (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
         else
@@ -133,7 +134,7 @@ let rec flattenSumation = function
     | Sumation xs -> xs |> mapFlatten flattenSumation toFlatSumationList |> oror Sumation
     | x -> (x, false)
 
-let Poly = function Sum xs -> Sumation(Array.map Mono xs)
+let Poly = function Sum xs -> xs <|> Mono |> Sumation
 
 let f =
     Sum [|
