@@ -73,10 +73,11 @@ type Expression =
                                         xs.[(start + count)..])
         | _ -> this
     // (a+b+...)(c+d+...) -> a(c+d+...) + b(c+d+...) + ...
-    member this.expand () =
-        match this with
+
+let rec expand = fun this ->
+    match this with
         | Product xs ->
-            let x = Array.map (fun (x : Expression) -> x.expand ()) xs in
+            let x = Array.map expand xs in
             if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
                 (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
             elif x.Length <= 1 then
@@ -86,7 +87,7 @@ type Expression =
                 | Sumation ys ->
                     (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) ys), true)
                 | _ ->
-                let pr = (Product xs.[1..]).expand() in
+                let pr = expand (Product xs.[1..]) in
                     if snd pr then
                         (Product(Array.append [|xs.[0]|] [|(fst pr)|]), true)
                     else
@@ -95,7 +96,7 @@ type Expression =
                             (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
                         | _ -> (this, false)
         | Sumation xs ->
-            let x = Array.map (fun (x : Expression) -> x.expand ()) xs in
+            let x = Array.map expand xs in
             if Array.fold (fun s -> fun p -> s || snd p) false x then
                 (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
             else
@@ -150,7 +151,7 @@ let printexpression name expression =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
 let rec printExpression name (expression : Expression) =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
-    let (x, f) = expression.expand () in
+    let (x, f) = expand expression in
         if f then
             System.Console.Write("expanded ")
             printExpression name x
