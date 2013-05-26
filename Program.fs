@@ -2,6 +2,7 @@
 let first = fun f -> fun (x, y) -> (f x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
 let flip = fun f -> fun x -> fun y -> f y x
+let ( *** ) f g = fun (x, y) -> (f x, g y)
 
 open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
@@ -101,22 +102,38 @@ type Expression =
                 (this, false)
         | _ -> (this, false)
 
+let (>**>) = fun f -> fun g -> Array.unzip >> (f *** g)
+//let doublefold = fun f -> fun g -> fun a -> fun b -> (Array.fold f a) >**> (Array.fold g b)
 
-let rec flattenProduct = function
-    | Sumation xs -> xs |> (Array.map flattenProduct) |> Sumation
-    | Product xs -> xs |> ((flattenProduct >> function
-        | Product ys -> ys
-        | y -> [|y|]
-        ) |> Array.map) |> Array.concat  |> Product
-    | x -> x
+let any = Array.fold (||) false
+let concany = Array.concat >**> any
+
+let toFlatProductList =
+    Array.map (function
+    | Product ys -> (ys, true)
+    | y -> ([|y|], false)) >> concany
+
+let toFlatSumationList : Expression[] -> (Expression[] * bool) =
+    Array.map (function
+    | Sumation ys -> (ys, true)
+    | y -> ([|y|], false)) >> concany
+
+let mapFlatten f g = Array.map f >> (g >**> any)
+let oror = fun f -> fun ((x, y), z) -> (f x, y || z)
+
+let rec flattenProduct : Expression -> Expression * bool = function
+    | Sumation xs ->
+        xs |> mapFlatten flattenProduct Sumation 
+    | Product xs ->
+        xs |> mapFlatten flattenProduct toFlatProductList |> oror Product
+    | x -> (x, false)
 
 let rec flattenSumation = function
-    | Product xs -> xs |> (Array.map flattenSumation) |> Product
-    | Sumation xs -> xs |> ((flattenSumation >> function
-        | Sumation ys -> ys
-        | y -> [|y|]
-        ) |> Array.map) |> Array.concat |> Sumation
-    | x -> x
+    | Product xs ->
+        xs |> mapFlatten flattenSumation Product
+    | Sumation xs ->
+        xs |> mapFlatten flattenSumation toFlatSumationList |> oror Sumation
+    | x -> (x, false)
 
 let Poly = function Sum xs -> Sumation(Array.map Mono xs)
 
@@ -133,11 +150,25 @@ let printexpression name expression =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
 let rec printExpression name (expression : Expression) =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
-    let x = expression.expand () in
-        if snd x then
-            printExpression name (fst x)
+    let (x, f) = expression.expand () in
+        if f then
+            System.Console.Write("expanded ")
+            printExpression name x
         else
-            printExpression name (flattenSumation (fst x))
+            System.Console.Write("non-expanded ")
+            let (y, g) = flattenSumation x in
+                if g then
+                    System.Console.Write("s-flattened ")
+                    printExpression name y
+                else
+                    System.Console.Write("non-s-flattened ")
+                    let (z, h) = flattenProduct y in
+                        if h then
+                            System.Console.Write("p-flattened ")
+                            printExpression name z
+                        else
+                            System.Console.WriteLine("non-p-flattened ")
+
 
 let main =
     printexpression "1" (Val 1)
@@ -145,7 +176,7 @@ let main =
     printexpression "g" g
     printexpression "f+g" (f + g)
     printexpression "f*g" (f * g)
-    //printExpression "f*g" (Product [|Poly f; Poly g|])
+    printExpression "f*g" (Product [|Poly f; Poly g|])
     printExpression "g*g*g" (Product [|Poly g; Poly g; Poly g|])
 
 main
