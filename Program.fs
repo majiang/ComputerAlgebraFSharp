@@ -1,74 +1,64 @@
 ﻿let uncurry = fun f -> fun x -> fun y -> f (x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
+let flip = fun f -> fun x -> fun y -> f y x
+
+open Microsoft.FSharp.Collections
+open Microsoft.FSharp.Core
 
 type Element =
     | Val of int
     | Var of string
-    member this.ToString : string =
+    override this.ToString() : string =
         match this with
         | Val x -> x.ToString()
         | Var x -> x
 
+let mjoin s =
+    ((fun x -> x.ToString()) |> Array.map)
+    >> fun (xs : string[]) -> System.String.Join(s, xs)
+
 type Monomial =
-    | EmptyProduct
-    | Mul of Monomial * Element
+    | Product of Element[]
     static member (*) (x, y) =
         match (x, y) with
-        | (EmptyProduct, m) -> m
-        | (m, EmptyProduct) -> m
-        | (m, Mul (m', e)) -> Mul (m * m', e)
-    member this.ToString : string =
+        | (Product e, Product f) -> Product((e |> Array.append) f)
+    override this.ToString() =
         match this with
-        | EmptyProduct -> "1"
-        | Mul (EmptyProduct, x) -> x.ToString
-        | Mul (m, e) -> m.ToString + "*" + e.ToString
+        | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
 
 type Polynomial =
-    | EmptySum
-    | Add of Polynomial * Monomial
+    | Sum of Monomial[]
     static member (+) (x, y) =
         match (x, y) with
-        | (EmptySum, p) -> p
-        | (p, EmptySum) -> p
-        | (p, Add (p', m)) -> Add (p + p', m)
-    static member (*) (x, y) =
-        match (x, y) with
-        | (EmptySum, _) -> EmptySum
-        | (_, EmptySum) -> EmptySum
-        | (p, Add (p', m')) -> (p * p') + (p * m')
-    static member (*) (x, y) =
-        match (x, y) with
-        | (EmptySum, _) -> EmptySum
-        | (Add (p, m), m') -> Add (p * m', m * m')
-    member this.ToString : string =
+        | (Sum e, Sum f) -> Sum((e |> Array.append) f)
+    override this.ToString() : string =
         match this with
-        | EmptySum -> "0"
-        | Add (EmptySum, m) -> m.ToString
-        | Add (p, m) -> p.ToString + " + " + m.ToString
+        | Sum xs -> if xs.Length = 0 then "0" else xs |> mjoin "+"
+    static member (*) (x, y) =
+        match (x, y) with
+        | (Sum xs, m) -> Sum(xs |> (flip (*) m |> Array.map)) 
+    static member (*) (x, y) =
+        match (x, y) with
+        | (m, Sum xs) -> Sum(xs |> ((*) m |> Array.map))
+    static member (*) (x, y : Polynomial) =
+        match (x, y) with
+        | (Sum xs, _) -> Sum(xs |> ((flip (*) y >> (fun p -> match p with Sum ms -> ms)) |> Array.map) |> Array.concat)
 
-let rec _makeMonomial = function
-    | [] -> EmptyProduct
-    | head::tail -> Mul (_makeMonomial tail, head)
-let rec _makePolynomial = function
-    | [] -> EmptySum
-    | head::tail -> Add (_makePolynomial tail, head)
-let makeMonomial = List.rev >> _makeMonomial
-let makePolynomial = List.rev >> _makePolynomial
 
 let f =
-    makePolynomial [
-        makeMonomial[Var "x"; Var "x"];
-        makeMonomial[Val 2; Var "x"];
-        makeMonomial[Val 1]]
+    Sum [|
+        Product[|Var "x"; Var "x"|];
+        Product[|Val 2; Var "x"|];
+        Product[|Val 1|]|]
 let g =
-    makePolynomial [
-        makeMonomial[Var "x"];
-        makeMonomial[Val 1]]
-
-let printExpression name (expression : Polynomial) =
-    System.Console.WriteLine("{0} = {1}", name, expression.ToString)
+    Sum [|
+        Product[|Var "x"|];
+        Product[|Val 3|]|]
+let printExpression name expression =
+    System.Console.WriteLine("{0} = {1}", name, expression.ToString())
 
 let main =
+    printExpression "1" (Val 1)
     printExpression "f" f
     printExpression "g" g
     printExpression "f+g" (f + g)
