@@ -1,0 +1,6 @@
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\bin\Debug\ComputerAlgebra.XML
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\bin\Debug\ComputerAlgebra.exe
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\bin\Debug\ComputerAlgebra.pdb
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\obj\x86\Debug\ResolveAssemblyReference.cache
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\obj\x86\Debug\ComputerAlgebra.exe
+c:\users\ryuichi\documents\my dropbox\visual studio 2010\Projects\ComputerAlgebra\ComputerAlgebra\obj\x86\Debug\ComputerAlgebra.pdb
