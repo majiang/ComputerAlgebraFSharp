@@ -77,32 +77,32 @@ let rec parenthesizedeeper = function
         | x -> x
 
 let rec expand = function
-        | Product xs ->
-            let x = Array.map expand xs in
-            if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
-                (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
-            elif x.Length <= 1 then
-                (Product xs, false)
-            else // no low-level expand done.
-                match xs.[0] with
-                | Sumation ys ->
-                    (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) ys), true)
-                | _ ->
-                let pr = expand (Product xs.[1..]) in
-                    if snd pr then
-                        (Product(Array.append [|xs.[0]|] [|(fst pr)|]), true)
-                    else
-                        match xs.[1] with
-                        | Sumation ys ->
-                            (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
-                        | _ -> (Product xs, false)
-        | Sumation xs ->
-            let x = Array.map expand xs in
-            if Array.fold (fun s -> fun p -> s || snd p) false x then
-                (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
-            else
-                (Sumation xs, false)
-        | x -> (x, false)
+    | Product xs ->
+        let x = Array.map expand xs in
+        if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
+            (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
+        elif x.Length <= 1 then
+            (Product xs, false)
+        else // no low-level expand done.
+            match xs.[0] with
+            | Sumation ys ->
+                (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) ys), true)
+            | _ ->
+            let pr = expand (Product xs.[1..]) in
+                if snd pr then
+                    (Product(Array.append [|xs.[0]|] [|(fst pr)|]), true)
+                else
+                    match xs.[1] with
+                    | Sumation ys ->
+                        (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
+                    | _ -> (Product xs, false)
+    | Sumation xs ->
+        let x = Array.map expand xs in
+        if Array.fold (fun s -> fun p -> s || snd p) false x then
+            (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
+        else
+            (Sumation xs, false)
+    | x -> (x, false)
 
 let (>**>) = fun f -> fun g -> Array.unzip >> (f *** g)
 //let doublefold = fun f -> fun g -> fun a -> fun b -> (Array.fold f a) >**> (Array.fold g b)
