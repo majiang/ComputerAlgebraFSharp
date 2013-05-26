@@ -22,19 +22,19 @@ let mjoin s =
 
 type Monomial =
     | Prod of Element[]
-    static member (*) (x, y) =
-        match (x, y) with
-        | (Prod e, Prod f) -> (e ++ f) |> Prod
-    override this.ToString() =
-        match this with
-        | Prod xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
+    member x.unProd = match x with Prod fs -> fs
+    static member (*) (x : Monomial, y : Monomial) =
+        (x.unProd ++ y.unProd) |> Prod
+    override x.ToString() =
+        x.unProd |> fun xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
 
 type Polynomial =
     | Sum of Monomial[]
     member x.unSum = match x with Sum ts -> ts
-    static member (+) (x : Polynomial, y : Polynomial) = (x.unSum ++ y.unSum) |> Sum
+    static member (+) (x : Polynomial, y : Polynomial) =
+        (x.unSum ++ y.unSum) |> Sum
     override x.ToString() : string =
-        x.unSum |> function xs -> if xs.Length = 0 then "0" else xs |> mjoin "+"
+        x.unSum |> fun xs -> if xs.Length = 0 then "0" else xs |> mjoin "+"
     static member (*) ((x : Polynomial), (y : Monomial)) =
         x.unSum |> (flip (*) y |> Array.map) |> Sum
     static member (*) ((x : Monomial), (y : Polynomial)) =
@@ -42,8 +42,6 @@ type Polynomial =
     static member (*) (x : Polynomial, y : Polynomial) =
         x.unSum |> ((flip (*) y >> (fun (p : Polynomial) -> p.unSum)) |> Array.map) |> Array.concat |> Sum
 
-let split<'T> start count = fun (xs : 'T[]) -> (xs.[..(start - 1)], xs.[start..(start+count-1)], xs.[(start + count)..])
-let inner f = fun (x, y, z) -> (x ++ [|f y|] ++ z) |> f
 let ifsp<'T> = fun (xs : 'T[]) -> fun p -> if xs.Length = 1 then "" else p
 type Expression =
     | Elem of Element
@@ -58,11 +56,25 @@ type Expression =
         | Mono x -> x.ToString()
         | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
         | Sumation xs -> if xs.Length = 0 then "0" else (ifsp xs "(") + (xs |> mjoin "+") + (ifsp xs ")")
-    member this.parenthesize start count =
-        match this with
-        | Product xs -> xs |> split start count |> inner Product
-        | Sumation xs -> xs |> split start count |> inner Sumation
-        | _ -> this
+
+let split<'T> start count = fun (xs : 'T[]) -> (xs.[..(start - 1)], xs.[start..(start+count-1)], xs.[(start + count)..])
+let inner f = fun (x, y, z) -> (x ++ [|f y|] ++ z)
+
+type ParenthesisPosition =
+    | Last of int * int
+    | Deeper of int * ParenthesisPosition
+
+let parenthesize = fun start -> fun count -> function
+    | Product xs -> xs |> split start count |> inner Product |> Product
+    | Sumation xs -> xs |> split start count |> inner Sumation |> Sumation
+    | x -> x
+
+let rec parenthesizedeeper = function
+    | Last (start, count) -> parenthesize start count
+    | Deeper (i, p) -> function
+        | Product xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Product
+        | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Sumation
+        | x -> x
 
 let rec expand = fun this ->
     match this with
@@ -104,7 +116,7 @@ let toFlatProductList =
     | Product ys -> (ys, true)
     | y -> ([|y|], false)) >> concany
 
-let toFlatSumationList : Expression[] -> (Expression[] * bool) =
+let toFlatSumationList =
     Array.map (function
     | Sumation ys -> (ys, true)
     | y -> ([|y|], false)) >> concany
@@ -112,7 +124,7 @@ let toFlatSumationList : Expression[] -> (Expression[] * bool) =
 let mapFlatten f g = Array.map f >> (g >**> any)
 let oror = fun f -> fun ((x, y), z) -> (f x, y || z)
 
-let rec flattenProduct : Expression -> Expression * bool = function
+let rec flattenProduct = function
     | Sumation xs -> xs |> mapFlatten flattenProduct Sumation
     | Product xs -> xs |> mapFlatten flattenProduct toFlatProductList |> oror Product
     | x -> (x, false)
