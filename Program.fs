@@ -3,6 +3,7 @@ let first = fun f -> fun (x, y) -> (f x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
 let flip = fun f -> fun x -> fun y -> f y x
 let ( *** ) f g = fun (x, y) -> (f x, g y)
+let (++) = Array.append
 
 open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
@@ -23,7 +24,7 @@ type Monomial =
     | Prod of Element[]
     static member (*) (x, y) =
         match (x, y) with
-        | (Prod e, Prod f) -> Prod((e |> Array.append) f)
+        | (Prod e, Prod f) -> (e ++ f) |> Prod
     override this.ToString() =
         match this with
         | Prod xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
@@ -32,24 +33,23 @@ type Polynomial =
     | Sum of Monomial[]
     static member (+) (x, y) =
         match (x, y) with
-        | (Sum e, Sum f) -> Sum((e |> Array.append) f)
+        | (Sum e, Sum f) -> (e ++ f) |> Sum
     override this.ToString() : string =
         match this with
         | Sum xs -> if xs.Length = 0 then "0" else xs |> mjoin "+"
-    static member (*) (x, y) =
-        match (x, y) with
-        | (Sum xs, m) -> Sum(xs |> (flip (*) m |> Array.map)) 
-    static member (*) (x, y) =
-        match (x, y) with
-        | (m, Sum xs) -> Sum(xs |> ((*) m |> Array.map))
-    static member (*) (x, y : Polynomial) =
-        match (x, y) with
-        | (Sum xs, _) -> Sum(xs |> ((flip (*) y >> (fun p -> match p with Sum ms -> ms)) |> Array.map) |> Array.concat)
+    member this.unSum =
+        match this with
+        | Sum ts -> ts
+    static member (*) ((x : Polynomial), (y : Monomial)) =
+        x.unSum |> (flip (*) y |> Array.map) |> Sum 
+    static member (*) ((x : Monomial), (y : Polynomial)) =
+        y.unSum |> ((*) x |> Array.map) |> Sum
+    static member (*) (x : Polynomial, y : Polynomial) =
+        x.unSum |> ((flip (*) y >> (fun (p : Polynomial) -> p.unSum)) |> Array.map) |> Array.concat |> Sum
 
 type Expression =
     | Elem of Element
     | Mono of Monomial
-//    | Poly of Polynomial
     | Product of Expression[]
     | Sumation of Expression[]
     static member (+) (x, y) = Sumation [|x; y|]
@@ -58,21 +58,13 @@ type Expression =
         match this with
         | Elem x -> x.ToString()
         | Mono x -> x.ToString()
-//        | Poly x -> "(" + x.ToString() + ")"
         | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
         | Sumation xs -> if xs.Length = 0 then "0" else (if xs.Length = 1 then "" else "(") + (xs |> mjoin "+") + (if xs.Length = 1 then "" else ")")
     member this.parenthesize start count =
         match this with
-        | Product xs -> Product (((
-                                        xs.[..(start - 1)] |> Array.append)
-                                        [|Product xs.[start..(start + count - 1)]|] |> Array.append)
-                                        xs.[(start + count)..])
-        | Sumation xs -> Sumation (((
-                                        xs.[..(start - 1)] |> Array.append)
-                                        [|Sumation xs.[start..(start + count - 1)]|] |> Array.append)
-                                        xs.[(start + count)..])
+        | Product xs -> (xs.[..(start - 1)] ++ [|Product xs.[start..(start + count - 1)]|] ++ xs.[(start + count)..]) |> Product
+        | Sumation xs -> (xs.[..(start - 1)] ++ [|Sumation xs.[start..(start + count - 1)]|]  ++ xs.[(start + count)..]) |> Sumation
         | _ -> this
-    // (a+b+...)(c+d+...) -> a(c+d+...) + b(c+d+...) + ...
 
 let rec expand = fun this ->
     match this with
