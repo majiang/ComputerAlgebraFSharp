@@ -76,14 +76,13 @@ let rec parenthesizedeeper = function
         | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Sumation
         | x -> x
 
-let rec expand = fun this ->
-    match this with
+let rec expand = function
         | Product xs ->
             let x = Array.map expand xs in
             if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
                 (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
             elif x.Length <= 1 then
-                (this, false)
+                (Product xs, false)
             else // no low-level expand done.
                 match xs.[0] with
                 | Sumation ys ->
@@ -96,14 +95,14 @@ let rec expand = fun this ->
                         match xs.[1] with
                         | Sumation ys ->
                             (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
-                        | _ -> (this, false)
+                        | _ -> (Product xs, false)
         | Sumation xs ->
             let x = Array.map expand xs in
             if Array.fold (fun s -> fun p -> s || snd p) false x then
                 (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
             else
-                (this, false)
-        | _ -> (this, false)
+                (Sumation xs, false)
+        | x -> (x, false)
 
 let (>**>) = fun f -> fun g -> Array.unzip >> (f *** g)
 //let doublefold = fun f -> fun g -> fun a -> fun b -> (Array.fold f a) >**> (Array.fold g b)
