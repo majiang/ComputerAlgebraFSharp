@@ -15,24 +15,6 @@ let ifte<'T> : bool -> 'T * 'T -> 'T = function
 open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
 
-type IsChanged<'T> =
-    | Changed of 'T
-    | Unchanged of 'T
-let forgetIsChanged<'T> : IsChanged<'T> -> 'T = function
-    | Changed x -> x
-    | Unchanged x -> x
-let getIsChanged = function
-    | Changed _ -> true
-    | Unchanged _ -> false
-let makeChanged = fun x -> Changed x
-let makeUnchanged = fun x -> Unchanged x
-let mapForget<'T> =
-    Array.map forgetIsChanged<'T>
-let chooseFunction<'T> =
-    Array.exists getIsChanged >> flip ifte (makeChanged, makeUnchanged)
-
-let isAnywhereChanged<'T> =
-    diagonal >> (mapForget *** chooseFunction) >> ((|>) |> uncurry)
 
 type Element =
     | Val of int
@@ -82,6 +64,25 @@ type Expression =
         | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
         | Sumation xs -> if xs.Length = 0 then "0" else (ifsp xs "(") + (xs |> mjoin "+") + (ifsp xs ")")
 
+type IsChanged<'T> =
+    | Changed of 'T
+    | Unchanged of 'T
+let forgetIsChanged<'T> : IsChanged<'T> -> 'T = function
+    | Changed x -> x
+    | Unchanged x -> x
+let getIsChanged = function
+    | Changed _ -> true
+    | Unchanged _ -> false
+let makeChanged = fun x -> Changed x
+let makeUnchanged = fun x -> Unchanged x
+let mapForget<'T> =
+    Array.map forgetIsChanged<'T>
+let chooseFunction<'T> =
+    Array.exists getIsChanged >> flip ifte (makeChanged, makeUnchanged)
+
+let isAnywhereChanged<'T> =
+    diagonal >> (mapForget *** chooseFunction) >> ((|>) |> uncurry)
+
 let split<'T> start count = fun (xs : 'T[]) -> (xs.[..(start - 1)], xs.[start..(start+count-1)], xs.[(start + count)..])
 let inner f = fun (x, y, z) -> (x ++ [|f y|] ++ z)
 
@@ -105,15 +106,18 @@ let rec expandC : Expression -> IsChanged<Expression> = function
     | Product xs ->
         match (xs <|> expandC) |> isAnywhereChanged with
         | Changed ys -> Changed (Product ys)
-        | Unchanged _ -> match xs.Length with
+        | Unchanged _ ->
+        match xs.Length with
             | 0 -> Unchanged (Product xs)
             | 1 -> Changed xs.[0]
-            | _ -> match xs.[0] with
+            | _ ->
+            match xs.[0] with
                 | Sumation ys ->
                     ys |>
                     ((((fun y -> Array.append [|y|] xs.[1..]) >> Product)
                     |> Array.map) >> Sumation >> Changed)
-                | other -> match expandC (Product xs.[1..]) with
+                | other ->
+                match expandC (Product xs.[1..]) with // OK?
                     | Changed (Product ys) -> ([|other|] ++ ys) |> (Product >> Changed)
                     | Unchanged _ -> xs |> (Product >> Unchanged)
     | Sumation xs ->
