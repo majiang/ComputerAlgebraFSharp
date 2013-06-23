@@ -43,8 +43,7 @@ type Element =
         | Var x -> x
 
 let mjoin s =
-    ((fun x -> x.ToString()) |> Array.map)
-    >> fun (xs : string[]) -> System.String.Join(s, xs)
+    (Array.map (fun x -> x.ToString())) >> fun xs -> System.String.Join(s, xs)
 
 type Monomial =
     | Prod of Element[]
@@ -102,9 +101,28 @@ let rec parenthesizedeeper = function
         | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Sumation
         | x -> x
 
-//let rec expandC = function
-//    | Product xs ->
-//        let x = xs <|> expandC in
+let rec expandC : Expression -> IsChanged<Expression> = function
+    | Product xs ->
+        match (xs <|> expandC) |> isAnywhereChanged with
+        | Changed ys -> Changed (Product ys)
+        | Unchanged _ -> match xs.Length with
+            | 0 -> Unchanged (Product xs)
+            | 1 -> Changed xs.[0]
+            | _ -> match xs.[0] with
+                | Sumation ys ->
+                    ys |>
+                    ((((fun y -> Array.append [|y|] xs.[1..]) >> Product)
+                    |> Array.map) >> Sumation >> Changed)
+                | other -> match expandC (Product xs.[1..]) with
+                    | Changed (Product ys) -> ([|other|] ++ ys) |> (Product >> Changed)
+                    | Unchanged _ -> xs |> (Product >> Unchanged)
+    | Sumation xs ->
+        match xs <|> expandC |> isAnywhereChanged with
+        | Changed ys -> ys |> (Sumation >> Changed)
+        | Unchanged ys -> ys |> (Sumation >> Unchanged)
+    | xs -> Unchanged xs
+
+
 
 let rec expand = function
     | Product xs ->
