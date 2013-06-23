@@ -73,12 +73,10 @@ let forgetIsChanged<'T> : IsChanged<'T> -> 'T = function
 let getIsChanged = function
     | Changed _ -> true
     | Unchanged _ -> false
-let makeChanged = fun x -> Changed x
-let makeUnchanged = fun x -> Unchanged x
 let mapForget<'T> =
     Array.map forgetIsChanged<'T>
 let chooseFunction<'T> =
-    Array.exists getIsChanged >> flip ifte (makeChanged, makeUnchanged)
+    Array.exists getIsChanged >> flip ifte (Changed, Unchanged)
 
 let isAnywhereChanged<'T> =
     diagonal >> (mapForget *** chooseFunction) >> ((|>) |> uncurry)
@@ -114,12 +112,12 @@ let rec expandC : Expression -> IsChanged<Expression> = function
             match xs.[0] with
                 | Sumation ys ->
                     ys |>
-                    ((((fun y -> Array.append [|y|] xs.[1..]) >> Product)
-                    |> Array.map) >> Sumation >> Changed)
+                    (((fun y -> Array.append [|y|] xs.[1..]) >> Product) |> Array.map) |>
+                    Sumation |> Changed
                 | other ->
-                match expandC (Product xs.[1..]) with // OK?
-                    | Changed (Product ys) -> ([|other|] ++ ys) |> (Product >> Changed)
-                    | Unchanged _ -> xs |> (Product >> Unchanged)
+                match expandC (Product xs.[1..]) with // proof for complete pattern matching is missing
+                    | Changed (Product ys) -> ([|other|] ++ ys) |> Product |> Changed
+                    | Unchanged _ -> xs |> Product |> Unchanged
     | Sumation xs ->
         match xs <|> expandC |> isAnywhereChanged with
         | Changed ys -> ys |> (Sumation >> Changed)
