@@ -1,13 +1,38 @@
-﻿let uncurry = fun f -> fun x -> fun y -> f (x, y)
+﻿let curry = fun f -> fun x -> fun y -> (x, y) |> f
+let uncurry = fun f -> fun (x, y) -> x |> f <| y
+let diagonal = fun x -> (x, x)
 let first = fun f -> fun (x, y) -> (f x, y)
 let second = fun f -> fun (x, y) -> (x, f y)
 let flip = fun f -> fun x -> fun y -> f y x
-let ( *** ) f g = fun (x, y) -> (f x, g y)
-let ( <|> ) x f = x |> flip Array.map <| f
+let ( *** ) = fun f -> fun g -> fun (x, y) -> (f x, g y)
+let (<^|) = flip // f <^| b = fun a -> a |> f <| b
+let ( <|> ) = fun x -> fun f -> x |> Array.map f
 let (++) = Array.append // (a ++ b) == (a |> Array.append <| b)
+let ifte<'T> : bool -> 'T * 'T -> 'T = function
+    | true -> fst
+    | false -> snd
 
 open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
+
+type IsChanged<'T> =
+    | Changed of 'T
+    | Unchanged of 'T
+let forgetIsChanged<'T> : IsChanged<'T> -> 'T = function
+    | Changed x -> x
+    | Unchanged x -> x
+let getIsChanged = function
+    | Changed _ -> true
+    | Unchanged _ -> false
+let makeChanged = fun x -> Changed x
+let makeUnchanged = fun x -> Unchanged x
+let mapForget<'T> =
+    Array.map forgetIsChanged<'T>
+let chooseFunction<'T> =
+    Array.exists getIsChanged >> flip ifte (makeChanged, makeUnchanged)
+
+let isAnywhereChanged<'T> =
+    diagonal >> (mapForget *** chooseFunction) >> ((|>) |> uncurry)
 
 type Element =
     | Val of int
@@ -76,6 +101,10 @@ let rec parenthesizedeeper = function
         | Product xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Product
         | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Sumation
         | x -> x
+
+//let rec expandC = function
+//    | Product xs ->
+//        let x = xs <|> expandC in
 
 let rec expand = function
     | Product xs ->
