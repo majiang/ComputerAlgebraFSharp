@@ -105,17 +105,17 @@ let rec expandC : Expression -> IsChanged<Expression> = function
         match (xs <|> expandC) |> isAnywhereChanged with
         | Changed ys -> Changed (Product ys)
         | Unchanged _ ->
-        match xs.Length with
+            match xs.Length with
             | 0 -> Unchanged (Product xs)
             | 1 -> Changed xs.[0]
             | _ ->
-            match xs.[0] with
+                match xs.[0] with
                 | Sumation ys ->
                     ys |>
                     (((fun y -> Array.append [|y|] xs.[1..]) >> Product) |> Array.map) |>
                     Sumation |> Changed
                 | other ->
-                match expandC (Product xs.[1..]) with // proof for complete pattern matching is missing
+                    match expandC (Product xs.[1..]) with // proof for complete pattern matching is missing
                     | Changed (Product ys) -> ([|other|] ++ ys) |> Product |> Changed
                     | Unchanged _ -> xs |> Product |> Unchanged
     | Sumation xs ->
