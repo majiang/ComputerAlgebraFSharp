@@ -16,7 +16,7 @@ open Microsoft.FSharp.Collections
 open Microsoft.FSharp.Core
 
 
-type Element =
+type Element = /// Type for element of an algebraic stracture.
     | Val of int
     | Var of string
     override this.ToString() : string =
@@ -24,10 +24,10 @@ type Element =
         | Val x -> x.ToString()
         | Var x -> x
 
-let mjoin s =
+let mjoin s = /// Join with separator an array using .ToString() call
     (Array.map (fun x -> x.ToString())) >> fun xs -> System.String.Join(s, xs)
 
-type Monomial =
+type Monomial = /// Type for monomial.
     | Prod of Element[]
     member x.unProd = match x with Prod fs -> fs
     static member (*) (x : Monomial, y : Monomial) =
@@ -35,7 +35,7 @@ type Monomial =
     override x.ToString() =
         x.unProd |> fun xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
 
-type Polynomial =
+type Polynomial = /// Type for Polynomial.
     | Sum of Monomial[]
     member x.unSum = match x with Sum ts -> ts
     static member (+) (x : Polynomial, y : Polynomial) =
@@ -50,7 +50,8 @@ type Polynomial =
         x.unSum <|> (flip (*) y >> (fun (p : Polynomial) -> p.unSum)) |> Array.concat |> Sum
 
 let ifsp<'T> = fun (xs : 'T[]) -> fun p -> if xs.Length = 1 then "" else p
-type Expression =
+
+type Expression = /// Type for more general expression.
     | Elem of Element
     | Mono of Monomial
     | Product of Expression[]
@@ -64,6 +65,10 @@ type Expression =
         | Product xs -> if xs.Length = 0 then "1" else xs |> mjoin "*"
         | Sumation xs -> if xs.Length = 0 then "0" else (ifsp xs "(") + (xs |> mjoin "+") + (ifsp xs ")")
 
+let unproduct this =
+    match this with
+    | Product xs -> xs
+
 type IsChanged<'T> =
     | Changed of 'T
     | Unchanged of 'T
@@ -75,11 +80,27 @@ let getIsChanged = function
     | Unchanged _ -> false
 let mapForget<'T> =
     Array.map forgetIsChanged<'T>
-let chooseFunction<'T> =
+let choose f g =
+    getIsChanged >> (flip ifte (f, g))
+let chooseChanged<'U, 'T> : IsChanged<'U>[] -> 'T -> IsChanged<'T> =
     Array.exists getIsChanged >> flip ifte (Changed, Unchanged)
+let chooseWith f g =
+    diagonal >> (forgetIsChanged *** choose f g) >> (uncurry (|>))
+let chooseWithAfter h f g =
+    chooseWith (h >> f) (h >> g)
 
-let isAnywhereChanged<'T> =
-    diagonal >> (mapForget *** chooseFunction) >> ((|>) |> uncurry)
+// やりたいこと:
+// - 展開などにおいて「expandC を map して一か所でも Changed なら Changed にくるむ、さもなければ自分自身を展開」
+// - expandC を試して Changed ならそのまま返す、さもなければ他の関数を試す
+//type IsChangedBuilder() =
+//    member __.Bind(isch, expr) =
+//        expr (forgetIsChanged isch)
+//    member __.Return(x) =
+//        Unchanged x
+//    member __.Delay(f) =
+
+let isAnywhereChanged<'U> : IsChanged<'U>[] -> IsChanged<'U[]> =
+    diagonal >> (mapForget *** chooseChanged<'U, 'U[]>) >> (uncurry (|>))
 
 let split<'T> start count = fun (xs : 'T[]) -> (xs.[..(start - 1)], xs.[start..(start+count-1)], xs.[(start + count)..])
 let inner f = fun (x, y, z) -> (x ++ [|f y|] ++ z)
@@ -93,95 +114,74 @@ let parenthesize = fun start -> fun count -> function
     | Sumation xs -> xs |> split start count |> inner Sumation |> Sumation
     | x -> x
 
-let rec parenthesizedeeper = function
+let rec parenthesizeDeeper = function
     | Last (start, count) -> parenthesize start count
     | Deeper (i, p) -> function
-        | Product xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Product
-        | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizedeeper p) |> Sumation
+        | Product xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizeDeeper p) |> Product
+        | Sumation xs -> xs |> split i 1 |> inner (fun x -> x.[0] |> parenthesizeDeeper p) |> Sumation
         | x -> x
 
-let rec expandC : Expression -> IsChanged<Expression> = function
+let foo = Product >> Changed
+
+let rec expandCF : Expression[] -> IsChanged<Expression> =
+    fun xs -> match xs.Length with
+    | 0 -> xs |> Product |> Unchanged
+    | 1 -> xs.[0] |> Changed
+    | _ ->
+        match xs.[0] with
+        | Sumation ys -> // 先頭が和なら展開
+            ys |> 
+            (((fun y -> Array.append [|y|] xs.[1..]) >> Product) |> Array.map) |>
+            Sumation |> Changed
+        | other -> // 先頭は和ではないので、後ろの部分を展開 (できないこともある)
+            xs.[1..] |> Product |> expandC |> chooseWithAfter
+                (fun ys -> [|other; ys|] |> Product) Changed Unchanged
+and expandC : Expression -> IsChanged<Expression> = function
     | Product xs ->
-        match (xs <|> expandC) |> isAnywhereChanged with
-        | Changed ys -> Changed (Product ys)
-        | Unchanged _ ->
-            match xs.Length with
-            | 0 -> Unchanged (Product xs)
-            | 1 -> Changed xs.[0]
-            | _ ->
-                match xs.[0] with
-                | Sumation ys ->
-                    ys |>
-                    (((fun y -> Array.append [|y|] xs.[1..]) >> Product) |> Array.map) |>
-                    Sumation |> Changed
-                | other ->
-                    match expandC (Product xs.[1..]) with // proof for complete pattern matching is missing
-                    | Changed (Product ys) -> ([|other|] ++ ys) |> Product |> Changed
-                    | Unchanged _ -> xs |> Product |> Unchanged
+        xs <|> expandC |> isAnywhereChanged |> chooseWith (Product >> Changed) expandCF
     | Sumation xs ->
-        match xs <|> expandC |> isAnywhereChanged with
-        | Changed ys -> ys |> Sumation |> Changed
-        | Unchanged ys -> ys |> Sumation |> Unchanged
-    | xs -> Unchanged xs
+        xs <|> expandC |> isAnywhereChanged |> chooseWithAfter Sumation Changed Unchanged
+    | other -> other |> Unchanged
 
 
 
-let rec expand = function
-    | Product xs ->
-        let x = xs <|> expand in
-        if Array.fold (fun s -> fun p -> s || snd p) false x then // naibu de seikou
-            (Product(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
-        elif x.Length <= 1 then
-            (Product xs, false)
-        else // no low-level expand done.
-            match xs.[0] with
-            | Sumation ys ->
-                (ys <|> (fun (y : Expression) -> Product(Array.append [|y|] xs.[1..])) |> Sumation, true)
-            | _ ->
-            let pr = expand (Product xs.[1..]) in
-                if snd pr then
-                    (Product(Array.append [|xs.[0]|] [|(fst pr)|]), true)
-                else
-                    match xs.[1] with
-                    | Sumation ys ->
-                        (Sumation (Array.map (fun (y : Expression) -> Product(Array.append [|xs.[0]; y|] xs.[2..])) ys), true)
-                    | _ -> (Product xs, false)
-    | Sumation xs ->
-        let x = xs <|> expand in
-        if Array.fold (fun s -> fun p -> s || snd p) false x then
-            (Sumation(Array.fold (fun s -> fun p -> Array.append s [|fst p|]) [||] x), true)
-        else
-            (Sumation xs, false)
-    | x -> (x, false)
-
-let (>**>) = fun f -> fun g -> Array.unzip >> (f *** g)
+//let (>**>) = fun f -> fun g -> Array.unzip >> (f *** g)
 //let doublefold = fun f -> fun g -> fun a -> fun b -> (Array.fold f a) >**> (Array.fold g b)
 
-let any = Array.fold (||) false
-let concany = Array.concat >**> any
+//let any = Array.fold (||) false
+//let concany = Array.concat >**> any
 
-let toFlatProductList =
+
+// concany : [C<[T]>] -> C<[T]>
+let concany =
+    isAnywhereChanged >> // C<[[T]]>
+    chooseWithAfter Array.concat Changed Unchanged
+
+let toFlatProducts =
     Array.map (function
-    | Product ys -> (ys, true)
-    | y -> ([|y|], false)) >> concany
+    | Product ys -> ys |> Changed
+    | y -> Unchanged [|y|]) >> concany
 
-let toFlatSumationList =
+let toFlatSumations =
     Array.map (function
-    | Sumation ys -> (ys, true)
-    | y -> ([|y|], false)) >> concany
+    | Sumation ys -> ys |> Changed
+    | y -> Unchanged [|y|]) >> concany
 
-let mapFlatten f g = Array.map f >> (g >**> any)
-let oror = fun f -> fun ((x, y), z) -> (f x, y || z)
+//let mapFlatten f g = Array.map f >> (g >**> any)
+//let oror = fun f -> fun ((x, y), z) -> (f x, y || z)
 
-let rec flattenProduct = function
-    | Sumation xs -> xs |> mapFlatten flattenProduct Sumation
-    | Product xs -> xs |> mapFlatten flattenProduct toFlatProductList |> oror Product
-    | x -> (x, false)
-
-let rec flattenSumation = function
-    | Product xs -> xs |> mapFlatten flattenSumation Product
-    | Sumation xs -> xs |> mapFlatten flattenSumation toFlatSumationList |> oror Sumation
-    | x -> (x, false)
+//let rec joinWith = fun flatten -> (function
+//    | Sumation xs -> xs |> flatten |> chooseWithAfter Sumation Changed Unchanged
+//    | Product xs -> xs |> flatten |> chooseWithAfter Product Changed Unchanged
+//    | other -> other |> Unchanged)
+let rec joinProduct = function
+    | Product xs -> xs |> toFlatProducts |> chooseWithAfter Product Changed Unchanged
+    | Sumation xs -> xs <|> joinProduct |> isAnywhereChanged |> chooseWithAfter Sumation Changed Unchanged
+    | other -> other |> Unchanged
+let rec joinSumation = function
+    | Sumation xs -> xs |> toFlatSumations |> chooseWithAfter Sumation Changed Unchanged
+    | Product xs -> xs <|> joinSumation |> isAnywhereChanged |> chooseWithAfter Product Changed Unchanged
+    | other -> other |> Unchanged
 
 let Poly = function Sum xs -> xs <|> Mono |> Sumation
 
@@ -196,35 +196,21 @@ let g =
         Prod[|Val 3|]|]
 let printexpression name expression =
     System.Console.WriteLine("{0} = {1}", name, expression.ToString())
+    expression
 let rec printExpression name (expression : Expression) =
-    System.Console.WriteLine("{0} = {1}", name, expression.ToString())
-    let (x, f) = expand expression in
-        if f then
-            System.Console.Write("expanded ")
-            printExpression name x
-        else
-            System.Console.Write("non-expanded ")
-            let (y, g) = flattenSumation x in
-                if g then
-                    System.Console.Write("s-flattened ")
-                    printExpression name y
-                else
-                    System.Console.Write("non-s-flattened ")
-                    let (z, h) = flattenProduct y in
-                        if h then
-                            System.Console.Write("p-flattened ")
-                            printExpression name z
-                        else
-                            System.Console.WriteLine("non-p-flattened ")
-
-
+    let expanded = expression |> (printexpression name) |> expandC
+    let pflattened = expanded |> chooseWithAfter (printexpression name) joinProduct joinProduct
+    pflattened |> chooseWithAfter (printexpression name) joinSumation joinSumation
+    
 let main =
-    printexpression "1" (Val 1)
-    printexpression "f" f
-    printexpression "g" g
-    printexpression "f+g" (f + g)
-    printexpression "f*g" (f * g)
-    printExpression "f*g" (Product [|Poly f; Poly g|])
-    printExpression "g*g*g" (Product [|Poly g; Poly g; Poly g|])
+    //printexpression "1" (Val 1)
+    //printexpression "f" f
+    ignore (printexpression "g" g)
+    //printexpression "f+g" (f + g)
+    //printexpression "f*g" (f * g)
+    //printExpression "f*g" (Product [|Poly f; Poly g|])
+    let p = (printExpression "g*g*g") >> forgetIsChanged
+    [|Poly g; Poly g; Poly g|] |> Product |> p |> p |> p |> p |> ignore
+    System.Console.ReadLine() |> ignore
 
-main
+main |> ignore
