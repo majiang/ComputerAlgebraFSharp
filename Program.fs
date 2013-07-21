@@ -120,8 +120,8 @@ let rec expandC : Expression -> IsChanged<Expression> = function
                     | Unchanged _ -> xs |> Product |> Unchanged
     | Sumation xs ->
         match xs <|> expandC |> isAnywhereChanged with
-        | Changed ys -> ys |> (Sumation >> Changed)
-        | Unchanged ys -> ys |> (Sumation >> Unchanged)
+        | Changed ys -> ys |> Sumation |> Changed
+        | Unchanged ys -> ys |> Sumation |> Unchanged
     | xs -> Unchanged xs
 
 
