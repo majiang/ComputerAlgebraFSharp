@@ -135,7 +135,7 @@ let rec expandCF : Expression[] -> IsChanged<Expression> =
             Sumation |> Changed
         | other -> // 先頭は和ではないので、後ろの部分を展開 (できないこともある)
             xs.[1..] |> Product |> expandC |> chooseWithAfter
-                (fun ys -> [|other; ys|] |> Product) Changed Unchanged
+                (fun ys -> [|other; ys|] |> Product) Changed Unchanged // Unchanged の場合、末尾の展開を試す必要あり。ただしこれは異なる戦略としておく方がよいかも。
 and expandC : Expression -> IsChanged<Expression> = function
     | Product xs ->
         xs <|> expandC |> isAnywhereChanged |> chooseWith (Product >> Changed) expandCF
